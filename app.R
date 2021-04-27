@@ -7,6 +7,7 @@ library(ggplot2)
 library(sf)
 library(leaflet)
 library(dplyr)
+library(geosphere)
 
 ## Import the data
 #change wd so i can use ldply
@@ -30,17 +31,64 @@ df["leaf_lat"] <- df$lat
 # Converting to sfc object so I can do distnace measurments
 df <- st_as_sf(df,coords = c("lng","lat"),crs=4326)
 
+# Row Number per group
+df<-df%>%group_by(date)%>%
+    dplyr::mutate(id = row_number())
+
+#func to calc distance between two succesive rows of points
+dist <- function(g1, g2,id) {
+    if (any(is.na(c(g1, g2)))) {
+        0
+    }else if (id==1) {
+       0
+    }else{
+        st_distance(g1,g2)*100000
+    }
+}
+# Apply function to data frame
+df <- df %>% group_by(date)%>%
+    dplyr::mutate(sf_distance = mapply(dist,geometry,lag(geometry,n=1),id))%>%
+    ungroup()
+
+
+# Cosine Distance
+modified_distCosine <- function(Longitude1, Latitude1, Longitude2, Latitude2,id) {
+    if (any(is.na(c(Longitude1, Latitude1, Longitude2, Latitude2)))) {
+        0
+    } else if(id==1) {
+        0
+    }else{
+        distCosine(c(Longitude1, Latitude1), c(Longitude2, Latitude2))
+    }
+}
+df <- df %>% dplyr::group_by(date)%>% 
+    dplyr::mutate(cosine_distance = mapply(modified_distCosine,leaf_lng, leaf_lat, lag(leaf_lng), lag(leaf_lat),id))%>%
+    dplyr::ungroup()
+
+#Cumulative Distance per date
+df <- df %>% dplyr::group_by(date) %>% 
+    dplyr::mutate(cum_dist_sf = cumsum(sf_distance),cum_dist_cosine= cumsum(cosine_distance))%>%
+    dplyr::mutate(cum_sum_sf_km = round(cum_dist_sf/1000,2),cum_sum_cosine_km = round(cum_dist_cosine/1000,2))%>%
+    dplyr::mutate(floor_cumsum_sf_km=floor(cum_sum_sf_km),floor_cumsum_cosine_km=floor(cum_sum_cosine_km))%>%
+    dplyr::ungroup()
+
+# Total elevation gain and drop
+
+
+
+# Save file to load wrangled version for app
+save(df,file = "df.Rdata")
+
+
 test <- df%>% filter(date=='2019-02-27')%>% #pick a selected day 
-                arrange(time_new) #Make sure sorted by timestamp
-
+    arrange(time_new)%>%
+    mutate(cumsum = cumsum(sf_distance))#Make sure sorted by timestamp
 head(test)
-m <- leaflet()%>% 
-    addProviderTiles("Esri.WorldImagery") %>%
-    setView(lng = test$lng[1], lat =test$lat[1],zoom = 12.3)%>%
-    addMarkers(lng = test$lng[1],lat = test$lat[1])%>% #Start point
-    addMarkers(lng = tail(test$lng,1),lat = tail(test$lat,1))%>% #Start point
-    addPolylines(lng =test$lng,lat = test$lat)
+z<-df[365:375,]
 
+test%>% select(sf_distance,cumsum)
+
+test$geometry
 #add start and end markers
 
 ui <- fluidPage(
@@ -50,7 +98,8 @@ ui <- fluidPage(
             selectInput("run_date",label= "Run Date", choices = unique(df$date), selected = "2019-02-27")
         ),
         mainPanel(
-            leafletOutput("mymap")
+            leafletOutput("mymap"),
+            dataTableOutput("mytable")
         )
     )
 )
@@ -64,6 +113,12 @@ server <- function(input, output) {
             addMarkers(lng = current_run$leaf_lng[1],lat = current_run$leaf_lat[1])%>% #Start point
             addMarkers(lng = tail(current_run$leaf_lng,1),lat = tail(current_run$leaf_lat,1))%>% #Start point
             addPolylines(lng =current_run$leaf_lng,lat = current_run$leaf_lat)
+    })
+    output$mytable <- renderDataTable({
+        current_run <- df%>% filter(date==input$run_date)%>% arrange(time_new) #pick a selected day
+        # run_duration <-tail(test$time_new,1)-test$time_new[1] #length of run in minutes
+        current_run
+        
     })
 }
 

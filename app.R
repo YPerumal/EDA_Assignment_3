@@ -73,8 +73,10 @@ df <- df %>% dplyr::group_by(date) %>%
     dplyr::ungroup()
 
 # Total elevation gain and drop
-
-
+df<-df%>%group_by(date)%>%
+    dplyr::mutate(elev_change = elevation-lag(elevation))%>%
+    replace_na(list(elev_change = 0))%>%
+    dplyr::mutate(cum_elev_change = cumsum(elev_change))
 
 # Save file to load wrangled version for app
 save(df,file = "df.Rdata")
@@ -91,19 +93,60 @@ test%>% select(sf_distance,cumsum)
 test$geometry
 #add start and end markers
 
-ui <- fluidPage(
-    titlePanel("Population Explosion"),
-    sidebarLayout(
-        sidebarPanel(
-            selectInput("run_date",label= "Run Date", choices = unique(df$date), selected = "2019-02-27")
-        ),
-        mainPanel(
-            leafletOutput("mymap"),
-            dataTableOutput("mytable")
-        )
-    )
-)
+library(bslib)
+# ui <- fluidPage(
+#     theme = bs_theme(version = 4, bootswatch = "solar"),
+#     titlePanel("Runatastic"),
+#     sidebarLayout(
+#         sidebarPanel(
+#             selectInput("run_date",label= "Run Date", choices = unique(df$date), selected = "2019-02-27")
+#         ),
+#         mainPanel(
+#             leafletOutput("mymap"),
+#             dataTableOutput("mytable")
+#         )
+#     )
+# )
 
+
+ui <- fluidPage(
+    theme = bs_theme(version = 4, bootswatch = "solar"),
+    titlePanel("Runtastic"),
+    tabsetPanel(
+        tabPanel("1 Run Summary",
+            fluidRow(
+                column(6,selectInput("run_date",label= "Run Date", choices = unique(df$date), selected = "2019-02-27"))
+                ),
+            fluidRow(
+                column(6,leafletOutput("mymap")),
+                column(6,dataTableOutput("mytable"))
+                )
+        ),
+        tabPanel("Your Last 5 Runs"),
+        tabPanel("Some Other Stuff"),    
+        tabPanel(title = "Video", icon = icon("youtube"),
+                 tags$br(),
+                 tags$iframe(
+                     src = "https://www.youtube.com/embed/QsBT5EQt348",
+                     width = 560,
+                     height = 315
+                 ),
+                 tags$p(
+                     id = "video-attribution",
+                     tags$a(
+                         "Video", 
+                         href = "https://www.youtube.com/embed/QsBT5EQt348"
+                     ),
+                     "by",
+                     tags$a(
+                         "Kurzgesagt",
+                         href = "https://kurzgesagt.org/",
+                         class = "site"
+                     )
+                 )
+        )
+        )
+)
 server <- function(input, output) {
     output$mymap <- renderLeaflet({
         current_run <- df%>% filter(date==input$run_date)%>% arrange(time_new) #pick a selected day

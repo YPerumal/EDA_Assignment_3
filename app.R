@@ -82,6 +82,23 @@ df<-df%>%group_by(date)%>%
 # Save file to load wrangled version for app
 save(df,file = "df.Rdata")
 
+# Single Run Aggregates
+head(df)
+single_run<- df %>%group_by(date)%>%
+                    dplyr::mutate(dist = max(cum_sum_sf_km),
+                                dur = round(as.numeric(tail(time_new,1)-time_new[1]),2),
+                                pace = round(as.numeric(tail(time_new,1)-time_new[1])/max(cum_sum_sf_km),2),
+                                elev = round(max(cum_elev_change)),2)%>%
+                                st_set_geometry(NULL)%>%
+                                select(date,dist,dur,pace,elev)%>%
+                                distinct()
+names(single_run) <- c("Date","Distance(Km)","Duration (mins)","Pace per Km","Overall Elevation Change(m)")
+
+
+
+
+
+
 
 test <- df%>% filter(date=='2019-02-27')%>% #pick a selected day 
     arrange(time_new)
@@ -97,23 +114,6 @@ sum(test$sf_distance)
 test%>% select(sf_distance,cumsum)
 
 test$geometry
-#add start and end markers
-
-
-# ui <- fluidPage(
-#     theme = bs_theme(version = 4, bootswatch = "solar"),
-#     titlePanel("Runatastic"),
-#     sidebarLayout(
-#         sidebarPanel(
-#             selectInput("run_date",label= "Run Date", choices = unique(df$date), selected = "2019-02-27")
-#         ),
-#         mainPanel(
-#             leafletOutput("mymap"),
-#             dataTableOutput("mytable")
-#         )
-#     )
-# )
-
 
 ui <- fluidPage(
     theme = bs_theme(version = 4, bootswatch = "solar"),
@@ -128,27 +128,34 @@ ui <- fluidPage(
                 column(width =  6,leafletOutput("mymap")),
                 column(width =  5,offset = 1, tableOutput("mytable"))
                 ),
-            fluidRow(column(width = 9,offset = 3,dataTableOutput("split_data",pageLength = 5)))
+            fluidRow(column(width = 9,offset = 3,dataTableOutput("split_data")))
         ),
-        tabPanel("Your Last 5 Runs"),
-        tabPanel("All Your Runs"),    
-        tabPanel(title = "Video", icon = icon("youtube"),
+        tabPanel("Your Last 5 Runs",
+                 fluidRow(plotlyOutput("five_dist")),
+                 fluidRow(tableOutput("five_table"))
+                 ),
+        tabPanel("All Your Runs",dataTableOutput("all_runs")),    
+        tabPanel(title = "Be Inspired to Run", icon = icon("youtube"),
                  tags$br(),
                  tags$iframe(
-                     src = "https://www.youtube.com/embed/QsBT5EQt348",
-                     width = 560,
-                     height = 315
+                     width="560", 
+                     height="315",
+                     src="https://www.youtube.com/embed/G0YwEc50dZg",
+                     title="YouTube video player",
+                     frameborder="0" ,
+                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture",
+                     allowfullscreen=TRUE
                  ),
                  tags$p(
                      id = "video-attribution",
                      tags$a(
                          "Video", 
-                         href = "https://www.youtube.com/embed/QsBT5EQt348"
+                         href = "https://www.youtube.com/embed/G0YwEc50dZg"
                      ),
                      "by",
                      tags$a(
-                         "Kurzgesagt",
-                         href = "https://kurzgesagt.org/",
+                         "Beinspiredchannel.com",
+                         href = "https://beinspiredchannel.com/",
                          class = "site"
                      )
                  )
@@ -199,6 +206,11 @@ server <- function(input, output) {
             NULL
         }
     })
+    output$all_runs <- renderDataTable({
+        single_run
+    })
+    
+    
 }
 
 shinyApp(ui = ui, server = server)

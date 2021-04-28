@@ -84,10 +84,13 @@ save(df,file = "df.Rdata")
 
 
 test <- df%>% filter(date=='2019-02-27')%>% #pick a selected day 
-    arrange(time_new)%>%
-    mutate(cumsum = cumsum(sf_distance))#Make sure sorted by timestamp
-t<-tail(test)
+    arrange(time_new)
 
+head(test)
+t<-tail(test)
+st_set_geometry(t, NULL)
+
+unique(test2$split)
 head(test)
 z<-df[365:375,]
 sum(test$sf_distance)
@@ -116,17 +119,19 @@ ui <- fluidPage(
     theme = bs_theme(version = 4, bootswatch = "solar"),
     titlePanel("Runtastic"),
     tabsetPanel(
-        tabPanel("1 Run Summary",
+        tabPanel("Latest Run Summary",
             fluidRow(
-                column(6,selectInput("run_date",label= "Run Date", choices = unique(df$date), selected = "2019-02-27"))
+                column(6,selectInput("run_date",label= "Run Date", choices = unique(df$date), selected = max(df$date))),
+                column(4,checkboxInput("split","Show Splits Per Km"))
                 ),
             fluidRow(
-                column(6,leafletOutput("mymap")),
-                column(6,tableOutput("mytable"))
-                )
+                column(width =  6,leafletOutput("mymap")),
+                column(width =  5,offset = 1, tableOutput("mytable"))
+                ),
+            fluidRow(column(width = 9,offset = 3,dataTableOutput("split_data",pageLength = 5)))
         ),
         tabPanel("Your Last 5 Runs"),
-        tabPanel("Some Other Stuff"),    
+        tabPanel("All Your Runs"),    
         tabPanel(title = "Video", icon = icon("youtube"),
                  tags$br(),
                  tags$iframe(
@@ -152,14 +157,15 @@ ui <- fluidPage(
 )
 
 server <- function(input, output) {
-    some_data <- reactive({
+    stats <- reactive({
         current_run <- df%>% filter(date==input$run_date)%>% arrange(time_new) #pick a selected day
         run_duration <-as.numeric(tail(test$time_new,1)-test$time_new[1]) #length of run in minutes
         run_dist <- max(current_run$cum_sum_sf_km)
         avg_pace <- as.numeric(run_duration)/run_dist
-        Stats <- c("Run Duration (min)","Run Distance (km)","Avg Pace (min/km)")
+        elev_change <- max(current_run$cum_elev_change)
+        Stats <- c("Run Duration (min)","Run Distance (km)","Avg Pace (min/km)","Overall Elevation Change(m)")
         # Stats <- c("Run Duration (min)","Run Distance (km)")
-        Results <- c(run_duration,run_dist,avg_pace)
+        Results <- c(run_duration,run_dist,avg_pace,elev_change)
         tb <-data.frame(Stats,Results)
     })
     
@@ -169,12 +175,29 @@ server <- function(input, output) {
             addProviderTiles("Esri.WorldImagery") %>%
             setView(lng = mean(current_run$leaf_lng), lat =mean(current_run$leaf_lat),zoom = 15)%>%
             fitBounds(min(current_run$leaf_lng), min(current_run$leaf_lat), max(current_run$leaf_lng), max(current_run$leaf_lat))%>%
-            addMarkers(lng = current_run$leaf_lng[1],lat = current_run$leaf_lat[1])%>% #Start point
-            addMarkers(lng = tail(current_run$leaf_lng,1),lat = tail(current_run$leaf_lat,1))%>% #Start point
+            addCircleMarkers(lng = current_run$leaf_lng[1],lat = current_run$leaf_lat[1],color="Green")%>% #Start point
+            addCircleMarkers(lng = tail(current_run$leaf_lng,1),lat = tail(current_run$leaf_lat,1),color = "Red")%>% #Start point
+            addMarkers(lng = current_run$leaf_lng[1],lat = current_run$leaf_lat[1],popup = "Start")%>% #Start point
+            addMarkers(lng = tail(current_run$leaf_lng,1),lat = tail(current_run$leaf_lat,1),popup = "Finish")%>% #Start point
             addPolylines(lng =current_run$leaf_lng,lat = current_run$leaf_lat)
     })
     output$mytable <- renderTable({
-        some_data()
+        stats()
+    })
+    output$split_data <-renderDataTable({
+        current_run <- df%>% filter(date==input$run_date)%>% arrange(time_new) #pick a selected day
+        if(input$split) {
+            s<-current_run%>%select(floor_cumsum_sf_km,time_new)%>%
+                st_set_geometry(NULL)%>%
+                group_by(floor_cumsum_sf_km)%>%
+                dplyr::mutate(split=tail(time_new,1)-time_new[1])%>%
+                dplyr::distinct(floor_cumsum_sf_km,split)
+            names(s) <- c("Km","Time")
+            s$Time <- round(s$Time,2)
+            s
+        }else{
+            NULL
+        }
     })
 }
 

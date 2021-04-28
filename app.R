@@ -8,6 +8,7 @@ library(sf)
 library(leaflet)
 library(dplyr)
 library(geosphere)
+library(bslib)
 
 ## Import the data
 #change wd so i can use ldply
@@ -85,15 +86,17 @@ save(df,file = "df.Rdata")
 test <- df%>% filter(date=='2019-02-27')%>% #pick a selected day 
     arrange(time_new)%>%
     mutate(cumsum = cumsum(sf_distance))#Make sure sorted by timestamp
+t<-tail(test)
+
 head(test)
 z<-df[365:375,]
-
+sum(test$sf_distance)
 test%>% select(sf_distance,cumsum)
 
 test$geometry
 #add start and end markers
 
-library(bslib)
+
 # ui <- fluidPage(
 #     theme = bs_theme(version = 4, bootswatch = "solar"),
 #     titlePanel("Runatastic"),
@@ -119,7 +122,7 @@ ui <- fluidPage(
                 ),
             fluidRow(
                 column(6,leafletOutput("mymap")),
-                column(6,dataTableOutput("mytable"))
+                column(6,tableOutput("mytable"))
                 )
         ),
         tabPanel("Your Last 5 Runs"),
@@ -147,21 +150,31 @@ ui <- fluidPage(
         )
         )
 )
+
 server <- function(input, output) {
+    some_data <- reactive({
+        current_run <- df%>% filter(date==input$run_date)%>% arrange(time_new) #pick a selected day
+        run_duration <-as.numeric(tail(test$time_new,1)-test$time_new[1]) #length of run in minutes
+        run_dist <- max(current_run$cum_sum_sf_km)
+        avg_pace <- as.numeric(run_duration)/run_dist
+        Stats <- c("Run Duration (min)","Run Distance (km)","Avg Pace (min/km)")
+        # Stats <- c("Run Duration (min)","Run Distance (km)")
+        Results <- c(run_duration,run_dist,avg_pace)
+        tb <-data.frame(Stats,Results)
+    })
+    
     output$mymap <- renderLeaflet({
         current_run <- df%>% filter(date==input$run_date)%>% arrange(time_new) #pick a selected day
         leaflet()%>% 
             addProviderTiles("Esri.WorldImagery") %>%
-            setView(lng = current_run$leaf_lng[1], lat =current_run$leaf_lat[1],zoom = 12.3)%>%
+            setView(lng = mean(current_run$leaf_lng), lat =mean(current_run$leaf_lat),zoom = 15)%>%
+            fitBounds(min(current_run$leaf_lng), min(current_run$leaf_lat), max(current_run$leaf_lng), max(current_run$leaf_lat))%>%
             addMarkers(lng = current_run$leaf_lng[1],lat = current_run$leaf_lat[1])%>% #Start point
             addMarkers(lng = tail(current_run$leaf_lng,1),lat = tail(current_run$leaf_lat,1))%>% #Start point
             addPolylines(lng =current_run$leaf_lng,lat = current_run$leaf_lat)
     })
-    output$mytable <- renderDataTable({
-        current_run <- df%>% filter(date==input$run_date)%>% arrange(time_new) #pick a selected day
-        # run_duration <-tail(test$time_new,1)-test$time_new[1] #length of run in minutes
-        current_run
-        
+    output$mytable <- renderTable({
+        some_data()
     })
 }
 

@@ -11,112 +11,107 @@ library(geosphere)
 library(bslib)
 library(plotly)
 
-## Import the data
-#change wd so i can use ldply
-setwd('/Users/yevashanperumal/Desktop/Data Science Masters/2021/EDA - STA5092Z/Assignments/EDA_Assignment_3/data')
-df <- ldply( .data = list.files(pattern="*.csv"),
-                    .fun = read.csv)
-# reset wd 
-setwd('/Users/yevashanperumal/Desktop/Data Science Masters/2021/EDA - STA5092Z/Assignments/EDA_Assignment_3')
-
-#No nulls?
-# sum(is.na(df))
-
-# convert date and time variables from characters
-df["date"] <- as_date(df$date)
-df["time_new"] <- parse_date_time(df$time,"HMS")
-
-#Storing orignal numeric lng lat for the leaflet map
-df["leaf_lng"] <- df$lng
-df["leaf_lat"] <- df$lat
-
-# Converting to sfc object so I can do distnace measurments
-df <- st_as_sf(df,coords = c("lng","lat"),crs=4326)
-
-# Row Number per group
-df<-df%>%group_by(date)%>%
-    dplyr::mutate(id = row_number())
-
-#func to calc distance between two succesive rows of points
-dist <- function(g1, g2,id) {
-    if (any(is.na(c(g1, g2)))) {
-        0
-    }else if (id==1) {
-       0
-    }else{
-        st_distance(g1,g2)*100000
-    }
-}
-# Apply function to data frame
-df <- df %>% group_by(date)%>%
-    dplyr::mutate(sf_distance = mapply(dist,geometry,lag(geometry,n=1),id))%>%
-    ungroup()
-
-
-# Cosine Distance
-modified_distCosine <- function(Longitude1, Latitude1, Longitude2, Latitude2,id) {
-    if (any(is.na(c(Longitude1, Latitude1, Longitude2, Latitude2)))) {
-        0
-    } else if(id==1) {
-        0
-    }else{
-        distCosine(c(Longitude1, Latitude1), c(Longitude2, Latitude2))
-    }
-}
-df <- df %>% dplyr::group_by(date)%>% 
-    dplyr::mutate(cosine_distance = mapply(modified_distCosine,leaf_lng, leaf_lat, lag(leaf_lng), lag(leaf_lat),id))%>%
-    dplyr::ungroup()
-
-#Cumulative Distance per date
-df <- df %>% dplyr::group_by(date) %>% 
-    dplyr::mutate(cum_dist_sf = cumsum(sf_distance),cum_dist_cosine= cumsum(cosine_distance))%>%
-    dplyr::mutate(cum_sum_sf_km = round(cum_dist_sf/1000,2),cum_sum_cosine_km = round(cum_dist_cosine/1000,2))%>%
-    dplyr::mutate(floor_cumsum_sf_km=floor(cum_sum_sf_km),floor_cumsum_cosine_km=floor(cum_sum_cosine_km))%>%
-    dplyr::ungroup()
-
-# Total elevation gain and drop
-df<-df%>%group_by(date)%>%
-    dplyr::mutate(elev_change = elevation-lag(elevation))%>%
-    replace_na(list(elev_change = 0))%>%
-    dplyr::mutate(cum_elev_change = cumsum(elev_change))
-
-# Save file to load wrangled version for app
-# save(df,file = "df.Rdata")
-
-
-# Single Run Aggregates
-head(df)
-single_run<- df %>%group_by(date)%>%
-                    dplyr::mutate(dist = max(cum_sum_sf_km),
-                                dur = round(as.numeric(tail(time_new,1)-time_new[1]),2),
-                                pace = round(as.numeric(tail(time_new,1)-time_new[1])/max(cum_sum_sf_km),2),
-                                elev = round(max(cum_elev_change)),2)%>%
-                                st_set_geometry(NULL)%>%
-                                select(date,dist,dur,pace,elev)%>%
-                                distinct()
-names(single_run) <- c("Date","Distance(Km)","Duration (mins)","Pace per Km","Net Elevation Change(m)")
+# ## Import the data
+# #change wd so i can use ldply
+# setwd('/Users/yevashanperumal/Desktop/Data Science Masters/2021/EDA - STA5092Z/Assignments/EDA_Assignment_3/data')
+# df <- ldply( .data = list.files(pattern="*.csv"),
+#                     .fun = read.csv)
+# # reset wd 
+# setwd('/Users/yevashanperumal/Desktop/Data Science Masters/2021/EDA - STA5092Z/Assignments/EDA_Assignment_3')
+# 
+# #No nulls?
+# # sum(is.na(df))
+# 
+# # convert date and time variables from characters
+# df["date"] <- as_date(df$date)
+# df["time_new"] <- parse_date_time(df$time,"HMS")
+# 
+# #Storing orignal numeric lng lat for the leaflet map
+# df["leaf_lng"] <- df$lng
+# df["leaf_lat"] <- df$lat
+# 
+# # Converting to sfc object so I can do distnace measurments
+# df <- st_as_sf(df,coords = c("lng","lat"),crs=4326)
+# 
+# # Row Number per group
+# df<-df%>%group_by(date)%>%
+#     dplyr::mutate(id = row_number())
+# 
+# #func to calc distance between two succesive rows of points
+# dist <- function(g1, g2,id) {
+#     if (any(is.na(c(g1, g2)))) {
+#         0
+#     }else if (id==1) {
+#        0
+#     }else{
+#         st_distance(g1,g2)*100000
+#     }
+# }
+# # Apply function to data frame
+# df <- df %>% group_by(date)%>%
+#     dplyr::mutate(sf_distance = mapply(dist,geometry,lag(geometry,n=1),id))%>%
+#     ungroup()
+# 
+# # Cosine Distance
+# modified_distCosine <- function(Longitude1, Latitude1, Longitude2, Latitude2,id) {
+#     if (any(is.na(c(Longitude1, Latitude1, Longitude2, Latitude2)))) {
+#         0
+#     } else if(id==1) {
+#         0
+#     }else{
+#         distCosine(c(Longitude1, Latitude1), c(Longitude2, Latitude2))
+#     }
+# }
+# df <- df %>% dplyr::group_by(date)%>% 
+#     dplyr::mutate(cosine_distance = mapply(modified_distCosine,leaf_lng, leaf_lat, lag(leaf_lng), lag(leaf_lat),id))%>%
+#     dplyr::ungroup()
+# 
+# #Cumulative Distance per date
+# df <- df %>% dplyr::group_by(date) %>% 
+#     dplyr::mutate(cum_dist_sf = cumsum(sf_distance),cum_dist_cosine= cumsum(cosine_distance))%>%
+#     dplyr::mutate(cum_sum_sf_km = round(cum_dist_sf/1000,2),cum_sum_cosine_km = round(cum_dist_cosine/1000,2))%>%
+#     dplyr::mutate(floor_cumsum_sf_km=floor(cum_sum_sf_km),floor_cumsum_cosine_km=floor(cum_sum_cosine_km))%>%
+#     dplyr::ungroup()
+# 
+# # Total elevation gain and drop
+# df<-df%>%group_by(date)%>%
+#     dplyr::mutate(elev_change = elevation-lag(elevation))%>%
+#     replace_na(list(elev_change = 0))%>%
+#     dplyr::mutate(cum_elev_change = cumsum(elev_change))
+# 
+# # Save file to load wrangled version for app
+# # save(df,file = "df.Rdata")
+# 
+# # Single Run Aggregates
+# single_run<- df %>%group_by(date)%>%
+#                     dplyr::mutate(dist = max(cum_sum_sf_km),
+#                                 dur = round(as.numeric(tail(time_new,1)-time_new[1]),2),
+#                                 pace = round(as.numeric(tail(time_new,1)-time_new[1])/max(cum_sum_sf_km),2),
+#                                 elev = round(max(cum_elev_change)),2)%>%
+#                                 st_set_geometry(NULL)%>%
+#                                 select(date,dist,dur,pace,elev)%>%
+#                                 distinct()
+# names(single_run) <- c("Date","Distance(Km)","Duration (mins)","Pace per Km","Net Elevation Change(m)")
 
 # Save file
-save(single_run,file = "single_run.Rdata")
+# save(single_run,file = "single_run.Rdata")
 
 #Load Relevant Datasets
-
 load("df.Rdata")
 load("single_run.Rdata")
-
-
 
 # Shiny Components
 ui <- fluidPage(
     theme = bs_theme(version = 4, bootswatch = "solar"),
     titlePanel("Runtastic"),
     tabsetPanel(id="tab1",
+        #First Tab
         tabPanel("Latest Run Summary",icon=icon("running"),
             fluidRow(
+                #Choose the run date to display
                 column(width = 3, selectInput("run_date",label= "Run Date", choices = unique(df$date), selected = max(df$date))),
-                
             ),
-            fluidRow(column(width = 3, checkboxInput("split","Show Splits Per Km"))),
+            fluidRow(column(width = 3, checkboxInput("split","Show Splits Per Km"))), #Show Splits table
             fluidRow(style = "padding-top:20px",
                      column(width = 6,leafletOutput("mymap")),
                      column(width = 6,tableOutput("mytable")))
@@ -125,15 +120,19 @@ ui <- fluidPage(
                      column(width = 6,dataTableOutput("split_data")
             )
         ),
+        # Second tab
         tabPanel("Your Last 10 Runs",icon=icon("chart-line"),
                  fluidRow(column(width = 6, plotOutput("five_g1")),
                           column(width = 6, plotOutput("five_g2"))
                           ),
+                 #Select number of Runs
                  fluidRow(column(offset=2,width = 8,sliderInput('run_num',label="No. of recent runs to view?",value = 10,min = 5,max = dim(single_run)[1]))),
                  fluidRow(column(offset=2,width = 7,tableOutput("five_table"))),
                  ),
+        # Third Tab
         tabPanel("All Your Runs",icon=icon("table"),
                  fluidRow(column(width = 10,offset=1,dataTableOutput("all_runs")))),    
+        # Fourth Tab
         tabPanel(title = "Be Inspired to Run", icon = icon("youtube"),
                  tags$br(),
                  tags$iframe(
@@ -180,7 +179,7 @@ server <- function(input, output) {
     output$split_data <-renderDataTable(options = list(pageLength = 5,dom='tp',caption = 'Table 1: This is a simple caption for the table.'),
                                         {
         current_run <- df%>% filter(date==input$run_date)%>% arrange(time_new) #pick a selected day
-        if(input$split & (input$tab1=="Latest Run Summary")) {
+        if(input$split & (input$tab1=="Latest Run Summary")) { #Only appears when ticked AND on on Tab 1 ONLY
             s<-current_run%>%select(floor_cumsum_sf_km,time_new)%>%
                 st_set_geometry(NULL)%>%
                 group_by(floor_cumsum_sf_km)%>%
@@ -198,7 +197,8 @@ server <- function(input, output) {
                                        {
         single_run
     })
-    #Latest 5 Run Stats
+    #Latest 10 Run Stats
+    #Graph 1 10 Run Stats
     output$five_g1 <- renderPlot({
         five_run <- tail(single_run,input$run_num)
         five_run%>%ggplot(aes(x=Date))+
@@ -211,6 +211,7 @@ server <- function(input, output) {
                   plot.title = element_text(hjust = 0.5),
                   plot.background = element_rect(fill = "#C8CBCE", color = "pink"))
     })
+    #Graph 2 10 Run Stats
     output$five_g2 <- renderPlot({
         five_run <- tail(single_run,input$run_num)
         five_run%>%ggplot(aes(x=Date))+
@@ -223,10 +224,13 @@ server <- function(input, output) {
                   plot.title = element_text(hjust = 0.5),
                   plot.background = element_rect(fill = "#C8CBCE", color = "pink"))
     })
+    #Table of run info 10 Run Stats
     output$five_table<- renderTable({
         five_run <- tail(single_run,input$run_num)
         five_run$Date <- as.character(five_run$Date)
         five_run
     })
 }
+
+#Run the App
 shinyApp(ui = ui, server = server)

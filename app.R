@@ -104,6 +104,8 @@ save(single_run,file = "single_run.Rdata")
 load("df.Rdata")
 load("single_run.Rdata")
 
+
+
 # Shiny Components
 ui <- fluidPage(
     theme = bs_theme(version = 4, bootswatch = "solar"),
@@ -127,7 +129,8 @@ ui <- fluidPage(
                  fluidRow(column(width = 6, plotOutput("five_g1")),
                           column(width = 6, plotOutput("five_g2"))
                           ),
-                 fluidRow(column(offset=2,width = 7,tableOutput("five_table")))
+                 fluidRow(column(offset=2,width = 8,sliderInput('run_num',label="No. of recent runs to view?",value = 10,min = 5,max = dim(single_run)[1]))),
+                 fluidRow(column(offset=2,width = 7,tableOutput("five_table"))),
                  ),
         tabPanel("All Your Runs",icon=icon("table"),
                  fluidRow(column(width = 10,offset=1,dataTableOutput("all_runs")))),    
@@ -196,7 +199,7 @@ server <- function(input, output) {
     })
     #Latest 5 Run Stats
     output$five_g1 <- renderPlot({
-        five_run <- tail(single_run,10)
+        five_run <- tail(single_run,input$run_num)
         five_run%>%ggplot(aes(x=Date))+
             geom_line(aes(y=`Distance(Km)`))+
             labs(title = "Distance Covered")+
@@ -208,7 +211,7 @@ server <- function(input, output) {
                   plot.background = element_rect(fill = "#C8CBCE", color = "pink"))
     })
     output$five_g2 <- renderPlot({
-        five_run <- tail(single_run,10)
+        five_run <- tail(single_run,input$run_num)
         five_run%>%ggplot(aes(x=Date))+
             geom_line(aes(y=`Duration (mins)`))+
             labs(title = "Run Duration")+
@@ -220,7 +223,7 @@ server <- function(input, output) {
                   plot.background = element_rect(fill = "#C8CBCE", color = "pink"))
     })
     output$five_table<- renderTable({
-        five_run <- tail(single_run,10)
+        five_run <- tail(single_run,input$run_num)
         five_run$Date <- as.character(five_run$Date)
         five_run
     })

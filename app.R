@@ -194,7 +194,8 @@ server <- function(input, output) {
         }
     })
     # DataTable of all 1 run summary
-    output$all_runs <- renderDataTable({
+    output$all_runs <- renderDataTable(options = list(pageLength = 10),
+                                       {
         single_run
     })
     #Latest 5 Run Stats

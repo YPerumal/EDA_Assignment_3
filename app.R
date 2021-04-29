@@ -81,9 +81,8 @@ df<-df%>%group_by(date)%>%
     dplyr::mutate(cum_elev_change = cumsum(elev_change))
 
 # Save file to load wrangled version for app
-save(df,file = "df.Rdata")
+# save(df,file = "df.Rdata")
 
-load("df.Rdata")
 
 # Single Run Aggregates
 head(df)
@@ -97,33 +96,19 @@ single_run<- df %>%group_by(date)%>%
                                 distinct()
 names(single_run) <- c("Date","Distance(Km)","Duration (mins)","Pace per Km","Net Elevation Change(m)")
 
-five_run <- tail(single_run)
+# Save file
+save(single_run,file = "single_run.Rdata")
 
-five_run%>%ggplot(aes(x=Date))+
-    geom_line(aes(y=`Distance(Km)`))+
-    labs(title = "Distance Covered")+
-    geom_hline(aes(yintercept = mean(single_run$`Distance(Km)`),color='Lifetime Average'))+
-    scale_colour_manual(values = c("red"))+
-    scale_color_discrete(name = NULL)+
-    theme(legend.position = "bottom",plot.title = element_text(hjust = 0.5))
-    
+#Load Relevant Datasets
 
-
-
-
-
-test <- df%>% filter(date=='2019-02-27')%>% #pick a selected day 
-    arrange(time_new)
-
-head(test)
-
-t<-tail(test)
+load("df.Rdata")
+load("single_run.Rdata")
 
 # Shiny Components
 ui <- fluidPage(
     theme = bs_theme(version = 4, bootswatch = "solar"),
     titlePanel("Runtastic"),
-    tabsetPanel(
+    tabsetPanel(id="tab1",
         tabPanel("Latest Run Summary",icon=icon("running"),
             fluidRow(
                 column(width = 3, selectInput("run_date",label= "Run Date", choices = unique(df$date), selected = max(df$date))),
@@ -192,7 +177,7 @@ server <- function(input, output) {
     output$split_data <-renderDataTable(options = list(pageLength = 5,dom='tp',caption = 'Table 1: This is a simple caption for the table.'),
                                         {
         current_run <- df%>% filter(date==input$run_date)%>% arrange(time_new) #pick a selected day
-        if(input$split) {
+        if(input$split & (input$tab1=="Latest Run Summary")) {
             s<-current_run%>%select(floor_cumsum_sf_km,time_new)%>%
                 st_set_geometry(NULL)%>%
                 group_by(floor_cumsum_sf_km)%>%

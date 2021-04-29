@@ -9,6 +9,7 @@ library(leaflet)
 library(dplyr)
 library(geosphere)
 library(bslib)
+library(plotly)
 
 ## Import the data
 #change wd so i can use ldply
@@ -92,9 +93,18 @@ single_run<- df %>%group_by(date)%>%
                                 st_set_geometry(NULL)%>%
                                 select(date,dist,dur,pace,elev)%>%
                                 distinct()
-names(single_run) <- c("Date","Distance(Km)","Duration (mins)","Pace per Km","Overall Elevation Change(m)")
+names(single_run) <- c("Date","Distance(Km)","Duration (mins)","Pace per Km","Net Elevation Change(m)")
 
+five_run <- tail(single_run)
 
+five_run%>%ggplot(aes(x=Date))+
+    geom_line(aes(y=`Distance(Km)`))+
+    labs(title = "Distance Covered")+
+    geom_hline(aes(yintercept = mean(single_run$`Distance(Km)`),color='Lifetime Average'))+
+    scale_colour_manual(values = c("red"))+
+    scale_color_discrete(name = NULL)+
+    theme(legend.position = "bottom",plot.title = element_text(hjust = 0.5))
+    
 
 
 
@@ -104,17 +114,10 @@ test <- df%>% filter(date=='2019-02-27')%>% #pick a selected day
     arrange(time_new)
 
 head(test)
+
 t<-tail(test)
-st_set_geometry(t, NULL)
 
-unique(test2$split)
-head(test)
-z<-df[365:375,]
-sum(test$sf_distance)
-test%>% select(sf_distance,cumsum)
-
-test$geometry
-
+# Shiny Components
 ui <- fluidPage(
     theme = bs_theme(version = 4, bootswatch = "solar"),
     titlePanel("Runtastic"),
@@ -122,24 +125,26 @@ ui <- fluidPage(
         tabPanel("Latest Run Summary",
             fluidRow(
                 column(6,selectInput("run_date",label= "Run Date", choices = unique(df$date), selected = max(df$date))),
-                column(4,checkboxInput("split","Show Splits Per Km"))
                 ),
+            fluidRow(6,column(offset=2,checkboxInput("split","Show Splits Per Km"))),
             fluidRow(
                 column(width =  6,leafletOutput("mymap")),
                 column(width =  5,offset = 1, tableOutput("mytable"))
                 ),
             fluidRow(column(width = 9,offset = 3,dataTableOutput("split_data")))
         ),
-        tabPanel("Your Last 5 Runs",
-                 fluidRow(plotlyOutput("five_dist")),
+        tabPanel("Your Last 10 Runs",
+                 fluidRow(column(6 ,plotlyOutput("five_g1")),
+                          column(6, plotlyOutput("five_g2"))
+                          ),
                  fluidRow(tableOutput("five_table"))
                  ),
         tabPanel("All Your Runs",dataTableOutput("all_runs")),    
         tabPanel(title = "Be Inspired to Run", icon = icon("youtube"),
                  tags$br(),
                  tags$iframe(
-                     width="560", 
-                     height="315",
+                     width="1120", 
+                     height="630",
                      src="https://www.youtube.com/embed/G0YwEc50dZg",
                      title="YouTube video player",
                      frameborder="0" ,
@@ -164,18 +169,19 @@ ui <- fluidPage(
 )
 
 server <- function(input, output) {
+    #Create a table to be used below in a reactive object
     stats <- reactive({
         current_run <- df%>% filter(date==input$run_date)%>% arrange(time_new) #pick a selected day
         run_duration <-as.numeric(tail(test$time_new,1)-test$time_new[1]) #length of run in minutes
         run_dist <- max(current_run$cum_sum_sf_km)
         avg_pace <- as.numeric(run_duration)/run_dist
         elev_change <- max(current_run$cum_elev_change)
-        Stats <- c("Run Duration (min)","Run Distance (km)","Avg Pace (min/km)","Overall Elevation Change(m)")
+        Stats <- c("Run Duration (min)","Run Distance (km)","Avg Pace (min/km)","Net Elevation Change(m)")
         # Stats <- c("Run Duration (min)","Run Distance (km)")
         Results <- c(run_duration,run_dist,avg_pace,elev_change)
         tb <-data.frame(Stats,Results)
     })
-    
+    # Create the Map with the route for the Run
     output$mymap <- renderLeaflet({
         current_run <- df%>% filter(date==input$run_date)%>% arrange(time_new) #pick a selected day
         leaflet()%>% 
@@ -188,9 +194,11 @@ server <- function(input, output) {
             addMarkers(lng = tail(current_run$leaf_lng,1),lat = tail(current_run$leaf_lat,1),popup = "Finish")%>% #Start point
             addPolylines(lng =current_run$leaf_lng,lat = current_run$leaf_lat)
     })
+    #Summary Stats for the 1 run page
     output$mytable <- renderTable({
         stats()
     })
+    # Splits table
     output$split_data <-renderDataTable({
         current_run <- df%>% filter(date==input$run_date)%>% arrange(time_new) #pick a selected day
         if(input$split) {
@@ -206,11 +214,39 @@ server <- function(input, output) {
             NULL
         }
     })
+    # DataTable of all 1 run summary
     output$all_runs <- renderDataTable({
         single_run
     })
-    
-    
+    #Latest 5 Run Stats
+    output$five_g1 <- renderPlotly({
+        five_run <- tail(single_run,10)
+        five_run%>%ggplot(aes(x=Date))+
+            geom_line(aes(y=`Distance(Km)`))+
+            labs(title = "Distance Covered")+
+            geom_hline(aes(yintercept = mean(single_run$`Distance(Km)`),color='Lifetime Average'))+
+            scale_colour_manual(values = c("red"))+
+            scale_color_discrete(name = NULL)+
+            theme(legend.position = "bottom",
+                  plot.title = element_text(hjust = 0.5),
+                  plot.background = element_rect(fill = "#C8CBCE", color = "pink"))
+    })
+    output$five_g2 <- renderPlotly({
+        five_run <- tail(single_run,10)
+        five_run%>%ggplot(aes(x=Date))+
+            geom_line(aes(y=`Duration (mins)`))+
+            labs(title = "Run Duration")+
+            geom_hline(aes(yintercept = mean(single_run$`Duration (mins)`),color='Lifetime Average'))+
+            scale_colour_manual(values = c("blue"))+
+            scale_color_discrete(name = NULL)+
+            theme(legend.position = "bottom",
+                  plot.title = element_text(hjust = 0.5),
+                  plot.background = element_rect(fill = "#C8CBCE", color = "pink"))
+    })
+    output$five_table<- renderTable({
+        five_run <- tail(single_run,10)
+        five_run$Date <- as.character(five_run$Date)
+        five_run
+    })
 }
-
 shinyApp(ui = ui, server = server)

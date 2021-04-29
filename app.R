@@ -83,6 +83,8 @@ df<-df%>%group_by(date)%>%
 # Save file to load wrangled version for app
 save(df,file = "df.Rdata")
 
+load("df.Rdata")
+
 # Single Run Aggregates
 head(df)
 single_run<- df %>%group_by(date)%>%
@@ -122,57 +124,45 @@ ui <- fluidPage(
     theme = bs_theme(version = 4, bootswatch = "solar"),
     titlePanel("Runtastic"),
     tabsetPanel(
-        tabPanel("Latest Run Summary",
+        tabPanel("Latest Run Summary",icon=icon("running"),
             fluidRow(
-                column(6,selectInput("run_date",label= "Run Date", choices = unique(df$date), selected = max(df$date))),
-                ),
-            fluidRow(6,column(offset=2,checkboxInput("split","Show Splits Per Km"))),
-            fluidRow(
-                column(width =  6,leafletOutput("mymap")),
-                column(width =  5,offset = 1, tableOutput("mytable"))
-                ),
-            fluidRow(column(width = 9,offset = 3,dataTableOutput("split_data")))
+                column(width = 3, selectInput("run_date",label= "Run Date", choices = unique(df$date), selected = max(df$date))),
+                
+            ),
+            fluidRow(column(width = 3, checkboxInput("split","Show Splits Per Km"))),
+            fluidRow(style = "padding-top:20px",
+                     column(width = 6,leafletOutput("mymap")),
+                     column(width = 6,tableOutput("mytable")))
+            ),
+            fluidRow(style = "padding-top:20px",
+                     column(width = 6,dataTableOutput("split_data")
+            )
         ),
-        tabPanel("Your Last 10 Runs",
-                 fluidRow(column(6 ,plotlyOutput("five_g1")),
-                          column(6, plotlyOutput("five_g2"))
+        tabPanel("Your Last 10 Runs",icon=icon("chart-line"),
+                 fluidRow(column(width = 6, plotOutput("five_g1")),
+                          column(width = 6, plotOutput("five_g2"))
                           ),
-                 fluidRow(tableOutput("five_table"))
+                 fluidRow(column(offset=2,width = 7,tableOutput("five_table")))
                  ),
-        tabPanel("All Your Runs",dataTableOutput("all_runs")),    
+        tabPanel("All Your Runs",icon=icon("table"),
+                 fluidRow(column(width = 10,offset=1,dataTableOutput("all_runs")))),    
         tabPanel(title = "Be Inspired to Run", icon = icon("youtube"),
                  tags$br(),
                  tags$iframe(
-                     width="1120", 
-                     height="630",
-                     src="https://www.youtube.com/embed/G0YwEc50dZg",
-                     title="YouTube video player",
-                     frameborder="0" ,
-                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture",
-                     allowfullscreen=TRUE
-                 ),
-                 tags$p(
-                     id = "video-attribution",
-                     tags$a(
-                         "Video", 
-                         href = "https://www.youtube.com/embed/G0YwEc50dZg"
-                     ),
-                     "by",
-                     tags$a(
-                         "Beinspiredchannel.com",
-                         href = "https://beinspiredchannel.com/",
-                         class = "site"
-                     )
+                     src = "https://www.youtube.com/embed/1q57u0Q9DN4" ,
+                     width = 560*1.5,
+                     height = 315*1.5,
+                     allowfullscreen=T
                  )
-        )
-        )
+                     )
+    )
 )
 
 server <- function(input, output) {
     #Create a table to be used below in a reactive object
     stats <- reactive({
         current_run <- df%>% filter(date==input$run_date)%>% arrange(time_new) #pick a selected day
-        run_duration <-as.numeric(tail(test$time_new,1)-test$time_new[1]) #length of run in minutes
+        run_duration <-as.numeric(tail(current_run$time_new,1)-current_run$time_new[1]) #length of run in minutes
         run_dist <- max(current_run$cum_sum_sf_km)
         avg_pace <- as.numeric(run_duration)/run_dist
         elev_change <- max(current_run$cum_elev_change)
@@ -199,7 +189,8 @@ server <- function(input, output) {
         stats()
     })
     # Splits table
-    output$split_data <-renderDataTable({
+    output$split_data <-renderDataTable(options = list(pageLength = 5,dom='tp',caption = 'Table 1: This is a simple caption for the table.'),
+                                        {
         current_run <- df%>% filter(date==input$run_date)%>% arrange(time_new) #pick a selected day
         if(input$split) {
             s<-current_run%>%select(floor_cumsum_sf_km,time_new)%>%
@@ -219,7 +210,7 @@ server <- function(input, output) {
         single_run
     })
     #Latest 5 Run Stats
-    output$five_g1 <- renderPlotly({
+    output$five_g1 <- renderPlot({
         five_run <- tail(single_run,10)
         five_run%>%ggplot(aes(x=Date))+
             geom_line(aes(y=`Distance(Km)`))+
@@ -231,7 +222,7 @@ server <- function(input, output) {
                   plot.title = element_text(hjust = 0.5),
                   plot.background = element_rect(fill = "#C8CBCE", color = "pink"))
     })
-    output$five_g2 <- renderPlotly({
+    output$five_g2 <- renderPlot({
         five_run <- tail(single_run,10)
         five_run%>%ggplot(aes(x=Date))+
             geom_line(aes(y=`Duration (mins)`))+
